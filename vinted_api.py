@@ -1,22 +1,15 @@
 import requests
 from config import API_URL, BASE_URL, HEADERS, VINTED_SESSION_COOKIE, PRICE_MIN, PRICE_MAX
 
-_session = requests.Session()
-_session.headers.update(HEADERS)
-if VINTED_SESSION_COOKIE:
-    # Accetta sia il cookie singolo che la stringa completa dei cookie
-    _session.headers["Cookie"] = VINTED_SESSION_COOKIE
 
-
-def _refresh_csrf() -> None:
-    try:
-        _session.get(BASE_URL, timeout=15)
-    except Exception:
-        pass
+def _get_headers() -> dict:
+    h = dict(HEADERS)
+    if VINTED_SESSION_COOKIE:
+        h["Cookie"] = VINTED_SESSION_COOKIE
+    return h
 
 
 def search_items(brand_ids: list[int]) -> list[dict]:
-    _refresh_csrf()
     params: dict = {
         "price_from": PRICE_MIN,
         "price_to": PRICE_MAX,
@@ -30,7 +23,12 @@ def search_items(brand_ids: list[int]) -> list[dict]:
         if isinstance(params["brand_ids[]"], list):
             params["brand_ids[]"].append(bid)
 
-    resp = _session.get(f"{API_URL}/catalog/items", params=params, timeout=20)
+    resp = requests.get(
+        f"{API_URL}/catalog/items",
+        params=params,
+        headers=_get_headers(),
+        timeout=20,
+    )
     if resp.status_code == 401:
         raise PermissionError("Cookie Vinted scaduto o mancante.")
     resp.raise_for_status()
@@ -38,10 +36,13 @@ def search_items(brand_ids: list[int]) -> list[dict]:
 
 
 def search_brands(query: str) -> list[dict]:
-    resp = _session.get(
+    resp = requests.get(
         f"{API_URL}/brands",
         params={"q": query, "limit": 10},
+        headers=_get_headers(),
         timeout=15,
     )
+    if resp.status_code == 401:
+        raise PermissionError("Cookie Vinted scaduto o mancante.")
     resp.raise_for_status()
     return resp.json().get("brands", [])
