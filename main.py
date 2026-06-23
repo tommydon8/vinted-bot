@@ -30,13 +30,12 @@ HELP_TEXT = (
     "👋 *Benvenuto nel Vinted Price Bot!*\n\n"
     f"Trova articoli dei tuoi brand preferiti sotto i *{PRICE_MAX:.0f}€* su Vinted 🛍\n\n"
     "📋 *Comandi disponibili:*\n"
-    "• /aggiungi — Aggiungi un brand e ricevi 20 articoli subito\n"
-    "• /altri — Ricevi altri 20 articoli dei tuoi brand\n"
-    "• /rimuovi — Rimuovi un brand\n"
-    "• /marche — Vedi i tuoi brand salvati\n"
+    "• /aggiungi — Scegli il brand da cercare (sostituisce quello attuale)\n"
+    "• /altri — Ricevi altri 20 articoli del brand attuale\n"
+    "• /marche — Vedi il brand attualmente selezionato\n"
     "• /reset — Dimentica gli articoli già visti\n"
     "• /aiuto — Mostra questo messaggio\n\n"
-    "💡 _Aggiungi almeno un brand per iniziare!_"
+    "💡 _Puoi avere un solo brand alla volta — /aggiungi lo sostituisce._"
 )
 
 
@@ -133,12 +132,13 @@ async def cmd_marche(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     _register(update)
     brands = db.get_user_brands(update.effective_user.id)
     if not brands:
-        await update.message.reply_text("Non hai ancora aggiunto brand.\nUsa /aggiungi per iniziare!")
+        await update.message.reply_text("Non hai ancora scelto un brand.\nUsa /aggiungi per iniziare!")
         return
-    lines = "\n".join(f"• {name}" for name, _ in brands)
+    brand_name = brands[0][0]
     await update.message.reply_text(
-        f"👟 *I tuoi brand monitorati:*\n\n{lines}\n\n"
-        f"💶 Range prezzo: {PRICE_MIN:.0f}€ – {PRICE_MAX:.0f}€",
+        f"👟 *Brand attuale:* {brand_name}\n"
+        f"💶 Range prezzo: {PRICE_MIN:.0f}€ – {PRICE_MAX:.0f}€\n\n"
+        f"Usa /aggiungi per cambiarlo.",
         parse_mode="Markdown",
     )
 
@@ -212,45 +212,6 @@ async def cmd_annulla(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-# ── Rimuovi brand ─────────────────────────────────────────────────────────────
-
-async def cmd_rimuovi(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    _register(update)
-    user_id = update.effective_user.id
-    brands = db.get_user_brands(user_id)
-
-    if not brands:
-        await update.message.reply_text("Non hai brand salvati.\nUsa /aggiungi per aggiungerne uno!")
-        return
-
-    keyboard = [
-        [InlineKeyboardButton(f"🗑 {name}", callback_data=f"rm|{name}")]
-        for name, _ in brands
-    ]
-    keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="rm|__cancel__")])
-
-    await update.message.reply_text(
-        "Quale brand vuoi rimuovere? 👇",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-
-async def rimuovi_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-
-    _, name = query.data.split("|", 1)
-    if name == "__cancel__":
-        await query.edit_message_text("❌ Operazione annullata.")
-        return
-
-    brands = db.get_user_brands(query.from_user.id)
-    for brand_name, brand_id in brands:
-        if brand_name == name:
-            db.remove_brand(query.from_user.id, brand_id)
-            break
-
-    await query.edit_message_text(f"✅ Brand *{name}* rimosso.", parse_mode="Markdown")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -279,8 +240,6 @@ def main() -> None:
     app.add_handler(CommandHandler("altri", cmd_piu))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(add_brand_conv)
-    app.add_handler(CommandHandler("rimuovi", cmd_rimuovi))
-    app.add_handler(CallbackQueryHandler(rimuovi_callback, pattern=r"^rm\|"))
 
     logger.info("Bot avviato — modalità manuale")
     app.run_polling(drop_pending_updates=True)

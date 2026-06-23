@@ -47,15 +47,14 @@ def get_user_brands(user_id: int) -> list[tuple[str, int]]:
 
 
 def add_brand(user_id: int, brand_name: str, vinted_brand_id: int) -> bool:
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute(
-                "INSERT INTO brands (user_id, brand_name, vinted_brand_id) VALUES (?, ?, ?)",
-                (user_id, brand_name, vinted_brand_id),
-            )
-        return True
-    except sqlite3.IntegrityError:
-        return False  # already exists
+    with sqlite3.connect(DB_PATH) as conn:
+        # Rimuovi il brand precedente e sostituiscilo con il nuovo
+        conn.execute("DELETE FROM brands WHERE user_id = ?", (user_id,))
+        conn.execute(
+            "INSERT INTO brands (user_id, brand_name, vinted_brand_id) VALUES (?, ?, ?)",
+            (user_id, brand_name, vinted_brand_id),
+        )
+    return True
 
 
 def remove_brand_by_name(user_id: int, brand_name: str) -> None:
