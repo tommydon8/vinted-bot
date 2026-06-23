@@ -99,13 +99,13 @@ class _VintedClient:
 _client = _VintedClient()
 
 
-def search_items_by_brand_name(brand_name: str) -> list[dict]:
+def search_items_by_brand_name(brand_name: str, price_max: float = PRICE_MAX) -> list[dict]:
     resp = _client.get(
         f"{API_URL}/catalog/items",
         params={
             "search_text": brand_name,
             "price_from": PRICE_MIN,
-            "price_to": PRICE_MAX,
+            "price_to": price_max,
             "currency": "EUR",
             "order": "newest_first",
             "per_page": 48,

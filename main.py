@@ -25,6 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 WAITING_BRAND_NAME = 0
+WAITING_PRICE = 2
 
 HELP_TEXT = (
     "👋 *Benvenuto nel Vinted Price Bot!*\n\n"
@@ -32,7 +33,8 @@ HELP_TEXT = (
     "📋 *Comandi disponibili:*\n"
     "• /aggiungi — Scegli il brand da cercare (sostituisce quello attuale)\n"
     "• /altri — Ricevi altri 20 articoli del brand attuale\n"
-    "• /marche — Vedi il brand attualmente selezionato\n"
+    "• /prezzo — Imposta il prezzo massimo (es. 5.50)\n"
+    "• /marche — Vedi il brand e il prezzo attuale\n"
     "• /reset — Dimentica gli articoli già visti\n"
     "• /aiuto — Mostra questo messaggio\n\n"
     "💡 _Puoi avere un solo brand alla volta — /aggiungi lo sostituisce._"
@@ -97,7 +99,8 @@ async def _fetch_and_send(bot, user_id: int) -> int:
         if count >= 20:
             break
         try:
-            items = search_items_by_brand_name(brand_name)
+            price_max = db.get_max_price(user_id)
+        items = search_items_by_brand_name(brand_name, price_max)
         except PermissionError:
             await bot.send_message(user_id, "❌ Errore di autenticazione con Vinted. Riprova più tardi.")
             return 0
@@ -130,17 +133,56 @@ async def cmd_aiuto(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_marche(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     _register(update)
-    brands = db.get_user_brands(update.effective_user.id)
+    user_id = update.effective_user.id
+    brands = db.get_user_brands(user_id)
+    price_max = db.get_max_price(user_id)
     if not brands:
         await update.message.reply_text("Non hai ancora scelto un brand.\nUsa /aggiungi per iniziare!")
         return
     brand_name = brands[0][0]
     await update.message.reply_text(
         f"👟 *Brand attuale:* {brand_name}\n"
-        f"💶 Range prezzo: {PRICE_MIN:.0f}€ – {PRICE_MAX:.0f}€\n\n"
-        f"Usa /aggiungi per cambiarlo.",
+        f"💶 Range prezzo: {PRICE_MIN:.0f}€ – {price_max:.2f}€\n\n"
+        f"Usa /aggiungi per cambiare brand.\n"
+        f"Usa /prezzo per cambiare il prezzo massimo.",
         parse_mode="Markdown",
     )
+
+
+async def cmd_prezzo_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    _register(update)
+    user_id = update.effective_user.id
+    price_max = db.get_max_price(user_id)
+    await update.message.reply_text(
+        f"💶 Prezzo massimo attuale: *{price_max:.2f}€*\n\n"
+        f"Scrivi il nuovo prezzo massimo (minimo 1€):\n"
+        f"_(es. 5, 7.50, 1.19...)_\n\n"
+        f"Digita /annulla per tornare al menu.",
+        parse_mode="Markdown",
+    )
+    return WAITING_PRICE
+
+
+async def cmd_prezzo_receive(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip().replace(",", ".")
+    try:
+        price = float(text)
+        if price < 1:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Prezzo non valido. Inserisci un numero maggiore o uguale a 1 (es. 5, 7.50)."
+        )
+        return WAITING_PRICE
+
+    user_id = update.effective_user.id
+    db.set_max_price(user_id, price)
+    await update.message.reply_text(
+        f"✅ Prezzo massimo impostato a *{price:.2f}€*!\n\n"
+        f"Usa /altri per cercare articoli con il nuovo range.",
+        parse_mode="Markdown",
+    )
+    return ConversationHandler.END
 
 
 async def cmd_piu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -234,12 +276,23 @@ def main() -> None:
         fallbacks=[CommandHandler("annulla", cmd_annulla)],
     )
 
+    prezzo_conv = ConversationHandler(
+        entry_points=[CommandHandler("prezzo", cmd_prezzo_start)],
+        states={
+            WAITING_PRICE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, cmd_prezzo_receive)
+            ],
+        },
+        fallbacks=[CommandHandler("annulla", cmd_annulla)],
+    )
+
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("aiuto", cmd_aiuto))
     app.add_handler(CommandHandler("marche", cmd_marche))
     app.add_handler(CommandHandler("altri", cmd_piu))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(add_brand_conv)
+    app.add_handler(prezzo_conv)
 
     logger.info("Bot avviato — modalità manuale")
     app.run_polling(drop_pending_updates=True)

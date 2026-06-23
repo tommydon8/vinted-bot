@@ -12,7 +12,8 @@ def init_db() -> None:
                 user_id   INTEGER PRIMARY KEY,
                 username  TEXT,
                 first_name TEXT,
-                paused    INTEGER NOT NULL DEFAULT 0
+                paused    INTEGER NOT NULL DEFAULT 0,
+                max_price REAL NOT NULL DEFAULT 10.0
             );
             CREATE TABLE IF NOT EXISTS brands (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,6 +99,22 @@ def mark_seen(user_id: int, item_id: int) -> None:
 def reset_seen(user_id: int) -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("DELETE FROM seen_items WHERE user_id = ?", (user_id,))
+
+
+def set_max_price(user_id: int, price: float) -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE users SET max_price = ? WHERE user_id = ?",
+            (price, user_id),
+        )
+
+
+def get_max_price(user_id: int) -> float:
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT max_price FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return row[0] if row else 10.0
 
 
 def set_paused(user_id: int, paused: bool) -> None:
