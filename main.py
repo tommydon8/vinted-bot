@@ -100,7 +100,7 @@ async def _fetch_and_send(bot, user_id: int) -> int:
             break
         try:
             price_max = db.get_max_price(user_id)
-        items = search_items_by_brand_name(brand_name, price_max)
+            items = search_items_by_brand_name(brand_name, price_max)
         except PermissionError:
             await bot.send_message(user_id, "❌ Errore di autenticazione con Vinted. Riprova più tardi.")
             return 0
