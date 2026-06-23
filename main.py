@@ -111,6 +111,10 @@ async def _fetch_and_send(bot, user_id: int) -> int:
         for item in items:
             if count >= 20:
                 break
+            # Controlla che il brand dell'articolo corrisponda al brand cercato
+            item_brand = (item.get("brand_title") or "").strip().lower()
+            if item_brand != brand_name.strip().lower():
+                continue
             item_id = item.get("id")
             if item_id and not db.is_seen(user_id, item_id):
                 db.mark_seen(user_id, item_id)
