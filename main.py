@@ -31,7 +31,7 @@ HELP_TEXT = (
     f"Trova articoli dei tuoi brand preferiti sotto i *{PRICE_MAX:.0f}€* su Vinted 🛍\n\n"
     "📋 *Comandi disponibili:*\n"
     "• /aggiungi — Aggiungi un brand e ricevi 20 articoli subito\n"
-    "• /+ — Ricevi altri 20 articoli dei tuoi brand\n"
+    "• /altri — Ricevi altri 20 articoli dei tuoi brand\n"
     "• /rimuovi — Rimuovi un brand\n"
     "• /marche — Vedi i tuoi brand salvati\n"
     "• /reset — Dimentica gli articoli già visti\n"
@@ -276,7 +276,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("aiuto", cmd_aiuto))
     app.add_handler(CommandHandler("marche", cmd_marche))
-    app.add_handler(CommandHandler(["piu", "più"], cmd_piu))
+    app.add_handler(CommandHandler("altri", cmd_piu))
     app.add_handler(CommandHandler("reset", cmd_reset))
     app.add_handler(add_brand_conv)
     app.add_handler(CommandHandler("rimuovi", cmd_rimuovi))
