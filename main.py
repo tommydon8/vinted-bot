@@ -121,6 +121,23 @@ async def _fetch_and_send(bot, user_id: int) -> int:
                 await _send_item(bot, user_id, item)
                 count += 1
 
+    price_max = db.get_max_price(user_id)
+    brand_name = brands[0][0]
+    if count == 0:
+        await bot.send_message(
+            user_id,
+            f"😔 Nessun articolo di *{brand_name}* trovato tra 1€ e {price_max:.2f}€.\n"
+            f"Prova ad allargare il range con /prezzo oppure riprova più tardi con /altri.",
+            parse_mode="Markdown",
+        )
+    elif count < 20:
+        await bot.send_message(
+            user_id,
+            f"✅ Trovati *{count}* articoli di *{brand_name}* tra 1€ e {price_max:.2f}€.\n"
+            f"Sono tutti quelli disponibili in questo range al momento.",
+            parse_mode="Markdown",
+        )
+
     return count
 
 
