@@ -37,6 +37,7 @@ HELP_TEXT = (
     "• /marche — Vedi i tuoi brand salvati\n"
     "• /cerca — Cerca subito (senza aspettare)\n"
     "• /reset — Dimentica gli articoli già visti\n"
+    "• /stop — Metti in pausa le notifiche\n"
     "• /aiuto — Mostra questo messaggio\n\n"
     "💡 _Aggiungi almeno un brand per iniziare!_"
 )
@@ -92,6 +93,9 @@ async def _send_item(bot, user_id: int, item: dict) -> None:
 async def _scan_for_user(bot, user_id: int, announce_empty: bool = False) -> int:
     brands = db.get_user_brands(user_id)
     if not brands:
+        return 0
+
+    if db.is_paused(user_id):
         return 0
 
     count = 0
@@ -166,6 +170,15 @@ async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("✅ Fatto! La prossima ricerca ti mostrerà tutti gli articoli.")
 
 
+async def cmd_stop(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    _register(update)
+    db.set_paused(update.effective_user.id, True)
+    await update.message.reply_text(
+        "⏸ Notifiche messe in pausa.\n\n"
+        "Usa /aggiungi per aggiungere un brand e riprendere automaticamente."
+    )
+
+
 # ── Aggiungi brand ────────────────────────────────────────────────────────────
 
 async def cmd_aggiungi_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
@@ -187,6 +200,7 @@ async def aggiungi_receive_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE) 
 
     user_id = update.effective_user.id
     added = db.add_brand(user_id, brand_name, 0)
+    db.set_paused(user_id, False)
 
     if added:
         await update.message.reply_text(
@@ -286,6 +300,7 @@ def main() -> None:
     app.add_handler(CommandHandler("marche", cmd_marche))
     app.add_handler(CommandHandler("cerca", cmd_cerca))
     app.add_handler(CommandHandler("reset", cmd_reset))
+    app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(add_brand_conv)
     app.add_handler(CommandHandler("rimuovi", cmd_rimuovi))
     app.add_handler(CallbackQueryHandler(rimuovi_callback, pattern=r"^rm\|"))

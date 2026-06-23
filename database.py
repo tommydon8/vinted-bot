@@ -11,7 +11,8 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 user_id   INTEGER PRIMARY KEY,
                 username  TEXT,
-                first_name TEXT
+                first_name TEXT,
+                paused    INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS brands (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,3 +99,19 @@ def mark_seen(user_id: int, item_id: int) -> None:
 def reset_seen(user_id: int) -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("DELETE FROM seen_items WHERE user_id = ?", (user_id,))
+
+
+def set_paused(user_id: int, paused: bool) -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE users SET paused = ? WHERE user_id = ?",
+            (1 if paused else 0, user_id),
+        )
+
+
+def is_paused(user_id: int) -> bool:
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT paused FROM users WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        return bool(row and row[0])
