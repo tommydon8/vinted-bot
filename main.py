@@ -105,12 +105,16 @@ async def _scan_for_user(bot, user_id: int, announce_empty: bool = False) -> int
             logger.error(f"Errore API per user {user_id}, brand {brand_name}: {e}")
             continue
 
+        brand_new = 0
         for item in items:
+            if brand_new >= 20:
+                break
             item_id = item.get("id")
             if item_id and not db.is_seen(user_id, item_id):
                 db.mark_seen(user_id, item_id)
                 await _send_item(bot, user_id, item)
                 count += 1
+                brand_new += 1
 
     if count == 0 and announce_empty:
         await bot.send_message(
