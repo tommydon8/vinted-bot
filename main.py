@@ -1,6 +1,5 @@
 """
-Vinted Price Bot — monitora Vinted e avvisa su Telegram quando trova
-articoli tra 1 e 10 euro dei brand preferiti dell'utente.
+Vinted Price Bot — trova articoli sotto i 10€ su richiesta.
 """
 
 import logging
@@ -29,15 +28,13 @@ WAITING_BRAND_NAME = 0
 
 HELP_TEXT = (
     "👋 *Benvenuto nel Vinted Price Bot!*\n\n"
-    f"Ti avviso su Telegram ogni volta che trovo un articolo dei tuoi brand "
-    f"preferiti a meno di *{PRICE_MAX:.0f}€* su Vinted 🛍\n\n"
+    f"Trova articoli dei tuoi brand preferiti sotto i *{PRICE_MAX:.0f}€* su Vinted 🛍\n\n"
     "📋 *Comandi disponibili:*\n"
-    "• /aggiungi — Aggiungi un brand da monitorare\n"
+    "• /aggiungi — Aggiungi un brand e ricevi 20 articoli subito\n"
+    "• /+ — Ricevi altri 20 articoli dei tuoi brand\n"
     "• /rimuovi — Rimuovi un brand\n"
     "• /marche — Vedi i tuoi brand salvati\n"
-    "• /cerca — Cerca subito (senza aspettare)\n"
     "• /reset — Dimentica gli articoli già visti\n"
-    "• /stop — Metti in pausa le notifiche\n"
     "• /aiuto — Mostra questo messaggio\n\n"
     "💡 _Aggiungi almeno un brand per iniziare!_"
 )
@@ -60,7 +57,7 @@ async def _send_item(bot, user_id: int, item: dict) -> None:
     url = f"{BASE_URL}/items/{item_id}"
 
     caption = (
-        f"🛍 *Nuovo articolo trovato!*\n\n"
+        f"🛍 *Articolo trovato!*\n\n"
         f"*{title}*\n"
         f"💶 *{amount} {currency}*\n"
         f"👟 Brand: {brand}\n"
@@ -90,16 +87,16 @@ async def _send_item(bot, user_id: int, item: dict) -> None:
         logger.warning(f"Impossibile inviare articolo {item_id} a {user_id}: {e}")
 
 
-async def _scan_for_user(bot, user_id: int, announce_empty: bool = False) -> int:
+async def _fetch_and_send(bot, user_id: int) -> int:
+    """Cerca articoli per tutti i brand dell'utente e ne manda al massimo 20."""
     brands = db.get_user_brands(user_id)
     if not brands:
         return 0
 
-    if db.is_paused(user_id):
-        return 0
-
     count = 0
     for brand_name, _ in brands:
+        if count >= 20:
+            break
         try:
             items = search_items_by_brand_name(brand_name)
         except PermissionError:
@@ -109,23 +106,15 @@ async def _scan_for_user(bot, user_id: int, announce_empty: bool = False) -> int
             logger.error(f"Errore API per user {user_id}, brand {brand_name}: {e}")
             continue
 
-        brand_new = 0
         for item in items:
+            if count >= 20:
+                break
             item_id = item.get("id")
-            if not item_id:
-                continue
-            if not db.is_seen(user_id, item_id):
+            if item_id and not db.is_seen(user_id, item_id):
                 db.mark_seen(user_id, item_id)
-                if brand_new < 20:
-                    await _send_item(bot, user_id, item)
-                    count += 1
-                    brand_new += 1
+                await _send_item(bot, user_id, item)
+                count += 1
 
-    if count == 0 and announce_empty:
-        await bot.send_message(
-            user_id,
-            "😔 Nessun nuovo articolo trovato in questo momento.\nRicontrollerò automaticamente!",
-        )
     return count
 
 
@@ -154,29 +143,26 @@ async def cmd_marche(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-async def cmd_cerca(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_piu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manda altri 20 articoli dei brand salvati."""
     _register(update)
     user_id = update.effective_user.id
     if not db.get_user_brands(user_id):
         await update.message.reply_text("Non hai brand salvati.\nUsa /aggiungi per aggiungerne uno!")
         return
-    await update.message.reply_text("🔍 Ricerca in corso...")
-    await _scan_for_user(ctx.bot, user_id, announce_empty=True)
+    await update.message.reply_text("🔍 Cerco altri articoli...")
+    count = await _fetch_and_send(ctx.bot, user_id)
+    if count == 0:
+        await update.message.reply_text(
+            "😔 Nessun nuovo articolo trovato al momento.\n"
+            "Riprova più tardi oppure usa /reset per rivedere quelli già mostrati."
+        )
 
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     _register(update)
     db.reset_seen(update.effective_user.id)
-    await update.message.reply_text("✅ Fatto! La prossima ricerca ti mostrerà tutti gli articoli.")
-
-
-async def cmd_stop(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    _register(update)
-    db.set_paused(update.effective_user.id, True)
-    await update.message.reply_text(
-        "⏸ Notifiche messe in pausa.\n\n"
-        "Usa /aggiungi per aggiungere un brand e riprendere automaticamente."
-    )
+    await update.message.reply_text("✅ Fatto! Ora con /+ rivedrai tutti gli articoli dall'inizio.")
 
 
 # ── Aggiungi brand ────────────────────────────────────────────────────────────
@@ -184,7 +170,7 @@ async def cmd_stop(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_aggiungi_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     _register(update)
     await update.message.reply_text(
-        "✏️ Scrivi il nome esatto del brand che vuoi monitorare:\n"
+        "✏️ Scrivi il nome del brand che vuoi cercare:\n"
         "_(es. Nike, Ralph Lauren, Zara, Adidas...)_\n\n"
         "Digita /annulla per tornare al menu.",
         parse_mode="Markdown",
@@ -200,20 +186,24 @@ async def aggiungi_receive_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE) 
 
     user_id = update.effective_user.id
     added = db.add_brand(user_id, brand_name, 0)
-    db.set_paused(user_id, False)
 
     if added:
         await update.message.reply_text(
-            f"✅ *{brand_name}* aggiunto!\n\n"
-            f"Da ora ti avviserò quando trovo articoli di questo brand tra "
-            f"{PRICE_MIN:.0f}€ e {PRICE_MAX:.0f}€ 🎉",
+            f"✅ *{brand_name}* aggiunto!\n\n🔍 Cerco i primi 20 articoli...",
             parse_mode="Markdown",
         )
     else:
         await update.message.reply_text(
-            f"ℹ️ Hai già *{brand_name}* tra i brand monitorati.",
+            f"ℹ️ Hai già *{brand_name}* salvato.\n\n🔍 Cerco 20 articoli...",
             parse_mode="Markdown",
         )
+
+    count = await _fetch_and_send(update.get_bot(), user_id)
+    if count == 0:
+        await update.message.reply_text(
+            "😔 Nessun articolo trovato al momento.\nRiprova con /+ più tardi."
+        )
+
     return ConversationHandler.END
 
 
@@ -254,7 +244,6 @@ async def rimuovi_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> No
         await query.edit_message_text("❌ Operazione annullata.")
         return
 
-    # Trova il brand_id dal db per rimuoverlo
     brands = db.get_user_brands(query.from_user.id)
     for brand_name, brand_id in brands:
         if brand_name == name:
@@ -262,17 +251,6 @@ async def rimuovi_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> No
             break
 
     await query.edit_message_text(f"✅ Brand *{name}* rimosso.", parse_mode="Markdown")
-
-
-# ── Background polling ────────────────────────────────────────────────────────
-
-async def job_poll_vinted(ctx: ContextTypes.DEFAULT_TYPE) -> None:
-    user_ids = db.get_all_active_user_ids()
-    if not user_ids:
-        return
-    logger.info(f"Polling Vinted per {len(user_ids)} utente/i...")
-    for user_id in user_ids:
-        await _scan_for_user(ctx.bot, user_id)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -298,16 +276,13 @@ def main() -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("aiuto", cmd_aiuto))
     app.add_handler(CommandHandler("marche", cmd_marche))
-    app.add_handler(CommandHandler("cerca", cmd_cerca))
+    app.add_handler(CommandHandler(["piu", "più"], cmd_piu))
     app.add_handler(CommandHandler("reset", cmd_reset))
-    app.add_handler(CommandHandler("stop", cmd_stop))
     app.add_handler(add_brand_conv)
     app.add_handler(CommandHandler("rimuovi", cmd_rimuovi))
     app.add_handler(CallbackQueryHandler(rimuovi_callback, pattern=r"^rm\|"))
 
-    app.job_queue.run_repeating(job_poll_vinted, interval=POLL_INTERVAL, first=15)
-
-    logger.info(f"Bot avviato — polling ogni {POLL_INTERVAL}s")
+    logger.info("Bot avviato — modalità manuale")
     app.run_polling(drop_pending_updates=True)
 
 

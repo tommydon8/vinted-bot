@@ -5,6 +5,8 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 VINTED_SESSION_COOKIE = os.getenv("VINTED_SESSION_COOKIE", "")
+VINTED_EMAIL = os.getenv("VINTED_EMAIL", "")
+VINTED_PASSWORD = os.getenv("VINTED_PASSWORD", "")
 VINTED_COUNTRY = os.getenv("VINTED_COUNTRY", "it")
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "60"))
 
