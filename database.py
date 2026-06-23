@@ -18,7 +18,7 @@ def init_db() -> None:
                 user_id         INTEGER NOT NULL,
                 brand_name      TEXT NOT NULL,
                 vinted_brand_id INTEGER NOT NULL,
-                UNIQUE(user_id, vinted_brand_id),
+                UNIQUE(user_id, brand_name),
                 FOREIGN KEY(user_id) REFERENCES users(user_id)
             );
             CREATE TABLE IF NOT EXISTS seen_items (
@@ -55,6 +55,14 @@ def add_brand(user_id: int, brand_name: str, vinted_brand_id: int) -> bool:
         return True
     except sqlite3.IntegrityError:
         return False  # already exists
+
+
+def remove_brand_by_name(user_id: int, brand_name: str) -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "DELETE FROM brands WHERE user_id = ? AND brand_name = ?",
+            (user_id, brand_name),
+        )
 
 
 def remove_brand(user_id: int, vinted_brand_id: int) -> None:

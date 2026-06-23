@@ -16,7 +16,7 @@ from telegram.ext import (
 )
 
 import database as db
-from vinted_api import search_items, search_brands
+from vinted_api import search_items_by_brand_name
 from config import TELEGRAM_BOT_TOKEN, BASE_URL, PRICE_MIN, PRICE_MAX, POLL_INTERVAL
 
 logging.basicConfig(
@@ -25,11 +25,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── ConversationHandler states ────────────────────────────────────────────────
 WAITING_BRAND_NAME = 0
-CHOOSING_BRAND = 1
 
-# ── Testi riutilizzabili ──────────────────────────────────────────────────────
 HELP_TEXT = (
     "👋 *Benvenuto nel Vinted Price Bot!*\n\n"
     f"Ti avviso su Telegram ogni volta che trovo un articolo dei tuoi brand "
@@ -44,8 +41,6 @@ HELP_TEXT = (
     "💡 _Aggiungi almeno un brand per iniziare!_"
 )
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _register(update: Update) -> None:
     u = update.effective_user
@@ -82,18 +77,13 @@ async def _send_item(bot, user_id: int, item: dict) -> None:
     try:
         if photo_url:
             await bot.send_photo(
-                user_id,
-                photo=photo_url,
-                caption=caption,
-                parse_mode="Markdown",
-                reply_markup=keyboard,
+                user_id, photo=photo_url, caption=caption,
+                parse_mode="Markdown", reply_markup=keyboard,
             )
         else:
             await bot.send_message(
-                user_id,
-                f"{caption}\n\n🔗 {url}",
-                parse_mode="Markdown",
-                reply_markup=keyboard,
+                user_id, f"{caption}\n\n🔗 {url}",
+                parse_mode="Markdown", reply_markup=keyboard,
             )
     except Exception as e:
         logger.warning(f"Impossibile inviare articolo {item_id} a {user_id}: {e}")
@@ -104,36 +94,33 @@ async def _scan_for_user(bot, user_id: int, announce_empty: bool = False) -> int
     if not brands:
         return 0
 
-    brand_ids = [bid for _, bid in brands]
-    try:
-        items = search_items(brand_ids)
-    except PermissionError:
-        await bot.send_message(
-            user_id,
-            "❌ Il cookie di Vinted è scaduto. Chiedi all'amministratore del bot di aggiornarlo.",
-        )
-        return 0
-    except Exception as e:
-        logger.error(f"Errore API per user {user_id}: {e}")
-        return 0
-
     count = 0
-    for item in items:
-        item_id = item.get("id")
-        if item_id and not db.is_seen(user_id, item_id):
-            db.mark_seen(user_id, item_id)
-            await _send_item(bot, user_id, item)
-            count += 1
+    for brand_name, _ in brands:
+        try:
+            items = search_items_by_brand_name(brand_name)
+        except PermissionError:
+            await bot.send_message(user_id, "❌ Errore di autenticazione con Vinted. Riprova più tardi.")
+            return 0
+        except Exception as e:
+            logger.error(f"Errore API per user {user_id}, brand {brand_name}: {e}")
+            continue
+
+        for item in items:
+            item_id = item.get("id")
+            if item_id and not db.is_seen(user_id, item_id):
+                db.mark_seen(user_id, item_id)
+                await _send_item(bot, user_id, item)
+                count += 1
 
     if count == 0 and announce_empty:
         await bot.send_message(
             user_id,
-            "😔 Nessun nuovo articolo trovato in questo momento.\nRicontrollerò automaticamente ogni minuto!",
+            "😔 Nessun nuovo articolo trovato in questo momento.\nRicontrollerò automaticamente!",
         )
     return count
 
 
-# ── Command handlers ──────────────────────────────────────────────────────────
+# ── Comandi ───────────────────────────────────────────────────────────────────
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     _register(update)
@@ -148,9 +135,7 @@ async def cmd_marche(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     _register(update)
     brands = db.get_user_brands(update.effective_user.id)
     if not brands:
-        await update.message.reply_text(
-            "Non hai ancora aggiunto brand.\nUsa /aggiungi per iniziare!"
-        )
+        await update.message.reply_text("Non hai ancora aggiunto brand.\nUsa /aggiungi per iniziare!")
         return
     lines = "\n".join(f"• {name}" for name, _ in brands)
     await update.message.reply_text(
@@ -164,9 +149,7 @@ async def cmd_cerca(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     _register(update)
     user_id = update.effective_user.id
     if not db.get_user_brands(user_id):
-        await update.message.reply_text(
-            "Non hai brand salvati.\nUsa /aggiungi per aggiungerne uno!"
-        )
+        await update.message.reply_text("Non hai brand salvati.\nUsa /aggiungi per aggiungerne uno!")
         return
     await update.message.reply_text("🔍 Ricerca in corso...")
     await _scan_for_user(ctx.bot, user_id, announce_empty=True)
@@ -175,19 +158,16 @@ async def cmd_cerca(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     _register(update)
     db.reset_seen(update.effective_user.id)
-    await update.message.reply_text(
-        "✅ Fatto! La prossima ricerca ti mostrerà tutti gli articoli, "
-        "anche quelli già visti in precedenza."
-    )
+    await update.message.reply_text("✅ Fatto! La prossima ricerca ti mostrerà tutti gli articoli.")
 
 
-# ── Aggiungi brand (ConversationHandler) ─────────────────────────────────────
+# ── Aggiungi brand ────────────────────────────────────────────────────────────
 
 async def cmd_aggiungi_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
     _register(update)
     await update.message.reply_text(
-        "🔍 Scrivi il nome del brand che vuoi aggiungere:\n"
-        "_(es. Nike, Zara, Adidas, H&M...)_\n\n"
+        "✏️ Scrivi il nome esatto del brand che vuoi monitorare:\n"
+        "_(es. Nike, Ralph Lauren, Zara, Adidas...)_\n\n"
         "Digita /annulla per tornare al menu.",
         parse_mode="Markdown",
     )
@@ -195,69 +175,24 @@ async def cmd_aggiungi_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def aggiungi_receive_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.message.text.strip()
-    await update.message.reply_text(f'🔎 Cerco "{query}" su Vinted...')
-
-    try:
-        results = search_brands(query)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Errore nella ricerca: {e}\nRiprova più tardi.")
-        return ConversationHandler.END
-
-    if not results:
-        await update.message.reply_text(
-            f'😕 Nessun brand trovato per "{query}".\n'
-            "Prova con un nome diverso, oppure /annulla."
-        )
+    brand_name = update.message.text.strip()
+    if not brand_name:
+        await update.message.reply_text("Nome non valido, riprova.")
         return WAITING_BRAND_NAME
 
-    # Salva i risultati in memoria temporanea per evitare il limite 64-byte dei callback
-    ctx.user_data["brand_results"] = results[:8]
-
-    keyboard = [
-        [InlineKeyboardButton(b["title"], callback_data=f"add|{i}")]
-        for i, b in enumerate(results[:8])
-    ]
-    keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="add|cancel")])
-
-    await update.message.reply_text(
-        f'Ho trovato questi brand per "{query}".\nQuale vuoi aggiungere? 👇',
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-    return CHOOSING_BRAND
-
-
-async def aggiungi_choose_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data  # "add|0" oppure "add|cancel"
-    _, value = data.split("|", 1)
-
-    if value == "cancel":
-        await query.edit_message_text("❌ Operazione annullata.")
-        return ConversationHandler.END
-
-    idx = int(value)
-    results = ctx.user_data.get("brand_results", [])
-    if idx >= len(results):
-        await query.edit_message_text("❌ Selezione non valida. Riprova con /aggiungi.")
-        return ConversationHandler.END
-
-    brand = results[idx]
-    user_id = query.from_user.id
-    added = db.add_brand(user_id, brand["title"], brand["id"])
+    user_id = update.effective_user.id
+    added = db.add_brand(user_id, brand_name, 0)
 
     if added:
-        await query.edit_message_text(
-            f"✅ *{brand['title']}* aggiunto!\n\n"
-            "Da ora ti avviserò quando trovo articoli di questo brand tra "
+        await update.message.reply_text(
+            f"✅ *{brand_name}* aggiunto!\n\n"
+            f"Da ora ti avviserò quando trovo articoli di questo brand tra "
             f"{PRICE_MIN:.0f}€ e {PRICE_MAX:.0f}€ 🎉",
             parse_mode="Markdown",
         )
     else:
-        await query.edit_message_text(
-            f"ℹ️ Hai già *{brand['title']}* tra i tuoi brand monitorati.",
+        await update.message.reply_text(
+            f"ℹ️ Hai già *{brand_name}* tra i brand monitorati.",
             parse_mode="Markdown",
         )
     return ConversationHandler.END
@@ -276,16 +211,14 @@ async def cmd_rimuovi(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     brands = db.get_user_brands(user_id)
 
     if not brands:
-        await update.message.reply_text(
-            "Non hai brand salvati da rimuovere.\nUsa /aggiungi per aggiungerne uno!"
-        )
+        await update.message.reply_text("Non hai brand salvati.\nUsa /aggiungi per aggiungerne uno!")
         return
 
     keyboard = [
-        [InlineKeyboardButton(f"🗑 {name}", callback_data=f"rm|{bid}|{name}")]
-        for name, bid in brands
+        [InlineKeyboardButton(f"🗑 {name}", callback_data=f"rm|{name}")]
+        for name, _ in brands
     ]
-    keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="rm|cancel|")])
+    keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="rm|__cancel__")])
 
     await update.message.reply_text(
         "Quale brand vuoi rimuovere? 👇",
@@ -297,20 +230,22 @@ async def rimuovi_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> No
     query = update.callback_query
     await query.answer()
 
-    parts = query.data.split("|", 2)
-    _, value, name = parts
-
-    if value == "cancel":
+    _, name = query.data.split("|", 1)
+    if name == "__cancel__":
         await query.edit_message_text("❌ Operazione annullata.")
         return
 
-    db.remove_brand(query.from_user.id, int(value))
-    await query.edit_message_text(
-        f"✅ Brand *{name}* rimosso con successo.", parse_mode="Markdown"
-    )
+    # Trova il brand_id dal db per rimuoverlo
+    brands = db.get_user_brands(query.from_user.id)
+    for brand_name, brand_id in brands:
+        if brand_name == name:
+            db.remove_brand(query.from_user.id, brand_id)
+            break
+
+    await query.edit_message_text(f"✅ Brand *{name}* rimosso.", parse_mode="Markdown")
 
 
-# ── Background polling job ────────────────────────────────────────────────────
+# ── Background polling ────────────────────────────────────────────────────────
 
 async def job_poll_vinted(ctx: ContextTypes.DEFAULT_TYPE) -> None:
     user_ids = db.get_all_active_user_ids()
@@ -331,15 +266,11 @@ def main() -> None:
 
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # ConversationHandler per aggiungere brand
     add_brand_conv = ConversationHandler(
         entry_points=[CommandHandler("aggiungi", cmd_aggiungi_start)],
         states={
             WAITING_BRAND_NAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, aggiungi_receive_name)
-            ],
-            CHOOSING_BRAND: [
-                CallbackQueryHandler(aggiungi_choose_callback, pattern=r"^add\|")
             ],
         },
         fallbacks=[CommandHandler("annulla", cmd_annulla)],
@@ -354,7 +285,6 @@ def main() -> None:
     app.add_handler(CommandHandler("rimuovi", cmd_rimuovi))
     app.add_handler(CallbackQueryHandler(rimuovi_callback, pattern=r"^rm\|"))
 
-    # Polling automatico Vinted
     app.job_queue.run_repeating(job_poll_vinted, interval=POLL_INTERVAL, first=15)
 
     logger.info(f"Bot avviato — polling ogni {POLL_INTERVAL}s")
