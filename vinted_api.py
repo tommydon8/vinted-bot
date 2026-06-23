@@ -4,7 +4,8 @@ from config import API_URL, BASE_URL, HEADERS, VINTED_SESSION_COOKIE, PRICE_MIN,
 _session = requests.Session()
 _session.headers.update(HEADERS)
 if VINTED_SESSION_COOKIE:
-    _session.cookies.set("_vinted_fr_session", VINTED_SESSION_COOKIE)
+    # Accetta sia il cookie singolo che la stringa completa dei cookie
+    _session.headers["Cookie"] = VINTED_SESSION_COOKIE
 
 
 def _refresh_csrf() -> None:
