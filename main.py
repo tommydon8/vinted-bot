@@ -198,6 +198,7 @@ async def cmd_prezzo_receive(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
 
     user_id = update.effective_user.id
     db.set_max_price(user_id, price)
+    db.reset_seen(user_id)
     await update.message.reply_text(
         f"✅ Prezzo massimo impostato a *{price:.2f}€*!\n\n"
         f"Usa /altri per cercare articoli con il nuovo range.",
@@ -214,12 +215,7 @@ async def cmd_piu(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Non hai brand salvati.\nUsa /aggiungi per aggiungerne uno!")
         return
     await update.message.reply_text("🔍 Cerco altri articoli...")
-    count = await _fetch_and_send(ctx.bot, user_id)
-    if count == 0:
-        await update.message.reply_text(
-            "😔 Nessun nuovo articolo trovato al momento.\n"
-            "Riprova più tardi oppure usa /reset per rivedere quelli già mostrati."
-        )
+    await _fetch_and_send(ctx.bot, user_id)
 
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -261,11 +257,7 @@ async def aggiungi_receive_name(update: Update, ctx: ContextTypes.DEFAULT_TYPE) 
             parse_mode="Markdown",
         )
 
-    count = await _fetch_and_send(update.get_bot(), user_id)
-    if count == 0:
-        await update.message.reply_text(
-            "😔 Nessun articolo trovato al momento.\nRiprova con /+ più tardi."
-        )
+    await _fetch_and_send(ctx.bot, user_id)
 
     return ConversationHandler.END
 
