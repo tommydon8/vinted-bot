@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>{{ item_label_plural }}</h2>
+  {% if items %}
+    <div class="grid">
+      {% for item in items %}
+        <article class="card">
+          <h3>{{ item.name }}</h3>
+          <p class="muted">{{ item.category }}</p>
+          <p>{{ item.description }}</p>
+          <p class="price">{{ "%.2f"|format(item.price) }} €</p>
+          {% if not item.available %}<p class="badge">Non disponibile</p>{% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Nessun {{ item_label|lower }} ancora disponibile.</p>
+  {% endif %}
+{% endblock %}
