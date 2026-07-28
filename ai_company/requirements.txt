@@ -1,0 +1,10 @@
+# Dipendenze per eseguire la company (CLI, orchestratore e i suoi test).
+# Nota: ogni progetto generato ha il proprio requirements.txt indipendente,
+# scritto dal DevOps Agent dentro la cartella del progetto.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+jinja2>=3.1
+python-multipart>=0.0.9
+pytest>=8.0
+httpx>=0.27
